@@ -5,6 +5,7 @@ import (
 	"flag"
 
 	ddbexportpoller "github.com/aereal/dynamodb-export-poller"
+	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 )
 
@@ -19,8 +20,10 @@ func (c *App) Run(argv []string) int {
 	fls := flag.NewFlagSet(argv[0], flag.ContinueOnError)
 	var (
 		tableArn string
+		debug    bool
 	)
 	fls.StringVar(&tableArn, "table-arn", "", "table ARN to watch exports")
+	fls.BoolVar(&debug, "debug", false, "debug mode")
 	switch err := fls.Parse(argv[1:]); err {
 	case nil: // continue
 	case flag.ErrHelp:
@@ -28,6 +31,9 @@ func (c *App) Run(argv []string) int {
 	default: // error but not ErrHelp
 		log.Error().Err(err).Send()
 		return statusNG
+	}
+	if debug {
+		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 	ctx := context.Background()
 	if err := c.run(ctx, tableArn); err != nil {
