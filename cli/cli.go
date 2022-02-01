@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"flag"
+	"runtime"
 	"time"
 
 	ddbexportpoller "github.com/aereal/dynamodb-export-poller"
@@ -23,10 +24,12 @@ func (c *App) Run(argv []string) int {
 		tableArn     string
 		debug        bool
 		initialDelay time.Duration
+		maxWorkers   int64
 	)
 	fls.StringVar(&tableArn, "table-arn", "", "table ARN to watch exports")
 	fls.BoolVar(&debug, "debug", false, "debug mode")
 	fls.DurationVar(&initialDelay, "initial-delay", time.Second, "initial wait time")
+	fls.Int64Var(&maxWorkers, "max-workers", int64(runtime.NumCPU()), "max workers count to run requests")
 	switch err := fls.Parse(argv[1:]); err {
 	case nil: // continue
 	case flag.ErrHelp:
@@ -39,15 +42,15 @@ func (c *App) Run(argv []string) int {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 	ctx := context.Background()
-	if err := c.run(ctx, tableArn, initialDelay); err != nil {
+	if err := c.run(ctx, tableArn, initialDelay, maxWorkers); err != nil {
 		log.Error().Err(err).Send()
 		return statusNG
 	}
 	return statusOK
 }
 
-func (c *App) run(ctx context.Context, tableArn string, initialDelay time.Duration) error {
-	poller, err := ddbexportpoller.NewPoller(tableArn, initialDelay)
+func (c *App) run(ctx context.Context, tableArn string, initialDelay time.Duration, maxWorkers int64) error {
+	poller, err := ddbexportpoller.NewPoller(tableArn, initialDelay, maxWorkers)
 	if err != nil {
 		return err
 	}

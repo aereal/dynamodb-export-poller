@@ -12,6 +12,7 @@ import (
 	"github.com/rs/zerolog/log"
 	"github.com/shogo82148/go-retry"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/sync/semaphore"
 )
 
 var (
@@ -20,19 +21,21 @@ var (
 	errExportNotFinite = errors.New("export is not finite")
 )
 
-func NewPoller(tableArn string, initialDelay time.Duration) (*Poller, error) {
+func NewPoller(tableArn string, initialDelay time.Duration, maxWorkers int64) (*Poller, error) {
 	if tableArn == "" {
 		return nil, ErrTableArnRequired
 	}
 	return &Poller{
 		tableArn:     tableArn,
 		initialDelay: initialDelay,
+		maxWorkers:   maxWorkers,
 	}, nil
 }
 
 type Poller struct {
 	tableArn     string
 	initialDelay time.Duration
+	maxWorkers   int64
 }
 
 func (p *Poller) PollExports(ctx context.Context) error {
@@ -47,12 +50,14 @@ func (p *Poller) PollExports(ctx context.Context) error {
 		return fmt.Errorf("ListExports(): %w", err)
 	}
 
+	sem := semaphore.NewWeighted(p.maxWorkers)
 	eg, ctx := errgroup.WithContext(ctx)
 	for _, summary := range out.ExportSummaries {
 		if summary.ExportStatus != types.ExportStatusInProgress {
 			continue
 		}
 		exportArn := summary.ExportArn
+		var amount int64 = 1
 		f := func() error {
 			l := log.With().Str("exportArn", *exportArn).Logger()
 			l.Debug().Msg("start describe export")
@@ -69,8 +74,12 @@ func (p *Poller) PollExports(ctx context.Context) error {
 			return nil
 		}
 		policy := &retry.Policy{MinDelay: p.initialDelay}
+		if err := sem.Acquire(ctx, amount); err != nil {
+			log.Error().Err(err).Str("exportArn", *exportArn).Msg("failed to acquire semaphore")
+			return nil
+		}
 		eg.Go(func() error {
-			// TODO: use semaphore to control concurrency
+			defer sem.Release(amount)
 			return policy.Do(ctx, f)
 		})
 	}
