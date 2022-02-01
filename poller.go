@@ -63,21 +63,6 @@ func (p *Poller) PollExports(ctx context.Context) error {
 		}
 		exportArn := summary.ExportArn
 		var amount int64 = 1
-		f := func() error {
-			l := log.With().Str("exportArn", *exportArn).Logger()
-			l.Debug().Msg("start describe export")
-			out, err := p.client.DescribeExport(ctx, &dynamodb.DescribeExportInput{ExportArn: exportArn})
-			if err != nil {
-				// TODO: check ErrorFault markPermanent
-				return err
-			}
-			if out.ExportDescription.ExportStatus == types.ExportStatusInProgress {
-				l.Debug().Msg("export is still in progress")
-				return errExportNotFinite
-			}
-			l.Debug().Msg("export finishes")
-			return nil
-		}
 		policy := &retry.Policy{MinDelay: p.initialDelay}
 		if err := sem.Acquire(ctx, amount); err != nil {
 			log.Error().Err(err).Str("exportArn", *exportArn).Msg("failed to acquire semaphore")
@@ -85,12 +70,28 @@ func (p *Poller) PollExports(ctx context.Context) error {
 		}
 		eg.Go(func() error {
 			defer sem.Release(amount)
-			return policy.Do(ctx, f)
+			return policy.Do(ctx, func() error { return p.pollExport(ctx, *exportArn) })
 		})
 	}
 	if err := eg.Wait(); err != nil {
 		return err
 	}
 
+	return nil
+}
+
+func (p *Poller) pollExport(ctx context.Context, exportArn string) error {
+	l := log.With().Str("exportArn", exportArn).Logger()
+	l.Debug().Msg("start describe export")
+	out, err := p.client.DescribeExport(ctx, &dynamodb.DescribeExportInput{ExportArn: &exportArn})
+	if err != nil {
+		// TODO: check ErrorFault markPermanent
+		return err
+	}
+	if out.ExportDescription.ExportStatus == types.ExportStatusInProgress {
+		l.Debug().Msg("export is still in progress")
+		return errExportNotFinite
+	}
+	l.Debug().Msg("export finishes")
 	return nil
 }
