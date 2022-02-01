@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/smithy-go"
 	"github.com/rs/zerolog/log"
 	"github.com/shogo82148/go-retry"
 	"golang.org/x/sync/errgroup"
@@ -85,7 +86,12 @@ func (p *Poller) pollExport(ctx context.Context, exportArn string) error {
 	l.Debug().Msg("start describe export")
 	out, err := p.client.DescribeExport(ctx, &dynamodb.DescribeExportInput{ExportArn: &exportArn})
 	if err != nil {
-		// TODO: check ErrorFault markPermanent
+		var apiErr smithy.APIError
+		if errors.As(err, &apiErr) {
+			if apiErr.ErrorFault() == smithy.FaultClient {
+				return retry.MarkPermanent(err)
+			}
+		}
 		return err
 	}
 	if out.ExportDescription.ExportStatus == types.ExportStatusInProgress {
