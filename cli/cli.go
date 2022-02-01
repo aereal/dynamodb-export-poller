@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"flag"
+	"time"
 
 	ddbexportpoller "github.com/aereal/dynamodb-export-poller"
 	"github.com/rs/zerolog"
@@ -19,11 +20,13 @@ type App struct{}
 func (c *App) Run(argv []string) int {
 	fls := flag.NewFlagSet(argv[0], flag.ContinueOnError)
 	var (
-		tableArn string
-		debug    bool
+		tableArn     string
+		debug        bool
+		initialDelay time.Duration
 	)
 	fls.StringVar(&tableArn, "table-arn", "", "table ARN to watch exports")
 	fls.BoolVar(&debug, "debug", false, "debug mode")
+	fls.DurationVar(&initialDelay, "initial-delay", time.Second, "initial wait time")
 	switch err := fls.Parse(argv[1:]); err {
 	case nil: // continue
 	case flag.ErrHelp:
@@ -36,15 +39,15 @@ func (c *App) Run(argv []string) int {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 	ctx := context.Background()
-	if err := c.run(ctx, tableArn); err != nil {
+	if err := c.run(ctx, tableArn, initialDelay); err != nil {
 		log.Error().Err(err).Send()
 		return statusNG
 	}
 	return statusOK
 }
 
-func (c *App) run(ctx context.Context, tableArn string) error {
-	poller, err := ddbexportpoller.NewPoller(tableArn)
+func (c *App) run(ctx context.Context, tableArn string, initialDelay time.Duration) error {
+	poller, err := ddbexportpoller.NewPoller(tableArn, initialDelay)
 	if err != nil {
 		return err
 	}

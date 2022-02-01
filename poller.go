@@ -20,17 +20,19 @@ var (
 	errExportNotFinite = errors.New("export is not finite")
 )
 
-func NewPoller(tableArn string) (*Poller, error) {
+func NewPoller(tableArn string, initialDelay time.Duration) (*Poller, error) {
 	if tableArn == "" {
 		return nil, ErrTableArnRequired
 	}
 	return &Poller{
-		tableArn: tableArn,
+		tableArn:     tableArn,
+		initialDelay: initialDelay,
 	}, nil
 }
 
 type Poller struct {
-	tableArn string
+	tableArn     string
+	initialDelay time.Duration
 }
 
 func (p *Poller) PollExports(ctx context.Context) error {
@@ -66,7 +68,7 @@ func (p *Poller) PollExports(ctx context.Context) error {
 			l.Debug().Msg("export finishes")
 			return nil
 		}
-		policy := &retry.Policy{MinDelay: time.Second} // TODO: pass MinDelay
+		policy := &retry.Policy{MinDelay: p.initialDelay}
 		eg.Go(func() error {
 			// TODO: use semaphore to control concurrency
 			return policy.Do(ctx, f)
