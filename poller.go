@@ -22,7 +22,7 @@ var (
 	errExportNotFinite = errors.New("export is not finite")
 )
 
-func NewPoller(tableArn string, initialDelay time.Duration, maxWorkers int64) (*Poller, error) {
+func NewPoller(tableArn string, initialDelay, maxDelay time.Duration, maxWorkers int64, maxAttempts int) (*Poller, error) {
 	if tableArn == "" {
 		return nil, ErrTableArnRequired
 	}
@@ -36,7 +36,9 @@ func NewPoller(tableArn string, initialDelay time.Duration, maxWorkers int64) (*
 	poller := &Poller{
 		tableArn:     tableArn,
 		initialDelay: initialDelay,
+		maxDelay:     maxDelay,
 		maxWorkers:   maxWorkers,
+		maxAttempts:  maxAttempts,
 	}
 	poller.client = dynamodb.NewFromConfig(cfg)
 	return poller, nil
@@ -45,6 +47,8 @@ func NewPoller(tableArn string, initialDelay time.Duration, maxWorkers int64) (*
 type Poller struct {
 	tableArn     string
 	initialDelay time.Duration
+	maxDelay     time.Duration
+	maxAttempts  int
 	maxWorkers   int64
 
 	client *dynamodb.Client
@@ -64,7 +68,11 @@ func (p *Poller) PollExports(ctx context.Context) error {
 		}
 		exportArn := summary.ExportArn
 		var amount int64 = 1
-		policy := &retry.Policy{MinDelay: p.initialDelay}
+		policy := &retry.Policy{
+			MinDelay: p.initialDelay,
+			MaxDelay: p.maxDelay,
+			MaxCount: p.maxAttempts,
+		}
 		if err := sem.Acquire(ctx, amount); err != nil {
 			log.Error().Err(err).Str("exportArn", *exportArn).Msg("failed to acquire semaphore")
 			return nil
