@@ -25,27 +25,32 @@ func NewPoller(tableArn string, initialDelay time.Duration, maxWorkers int64) (*
 	if tableArn == "" {
 		return nil, ErrTableArnRequired
 	}
-	return &Poller{
+
+	ctx := context.Background()
+	cfg, err := config.LoadDefaultConfig(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("LoadDefaultConfig(): %w", err)
+	}
+
+	poller := &Poller{
 		tableArn:     tableArn,
 		initialDelay: initialDelay,
 		maxWorkers:   maxWorkers,
-	}, nil
+	}
+	poller.client = dynamodb.NewFromConfig(cfg)
+	return poller, nil
 }
 
 type Poller struct {
 	tableArn     string
 	initialDelay time.Duration
 	maxWorkers   int64
+
+	client *dynamodb.Client
 }
 
 func (p *Poller) PollExports(ctx context.Context) error {
-	cfg, err := config.LoadDefaultConfig(ctx)
-	if err != nil {
-		return fmt.Errorf("LoadDefaultConfig(): %w", err)
-	}
-	client := dynamodb.NewFromConfig(cfg)
-
-	out, err := client.ListExports(ctx, &dynamodb.ListExportsInput{TableArn: &p.tableArn})
+	out, err := p.client.ListExports(ctx, &dynamodb.ListExportsInput{TableArn: &p.tableArn})
 	if err != nil {
 		return fmt.Errorf("ListExports(): %w", err)
 	}
@@ -61,7 +66,7 @@ func (p *Poller) PollExports(ctx context.Context) error {
 		f := func() error {
 			l := log.With().Str("exportArn", *exportArn).Logger()
 			l.Debug().Msg("start describe export")
-			out, err := client.DescribeExport(ctx, &dynamodb.DescribeExportInput{ExportArn: exportArn})
+			out, err := p.client.DescribeExport(ctx, &dynamodb.DescribeExportInput{ExportArn: exportArn})
 			if err != nil {
 				// TODO: check ErrorFault markPermanent
 				return err
