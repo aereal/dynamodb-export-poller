@@ -42,17 +42,14 @@ func (c *App) Run(argv []string) int {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 	ctx := context.Background()
-	if err := c.run(ctx, tableArn, initialDelay, maxWorkers); err != nil {
+	poller, err := ddbexportpoller.NewPoller(tableArn, initialDelay, maxWorkers)
+	if err != nil {
+		log.Error().Err(err).Send()
+		return statusNG
+	}
+	if err := poller.PollExports(ctx); err != nil {
 		log.Error().Err(err).Send()
 		return statusNG
 	}
 	return statusOK
-}
-
-func (c *App) run(ctx context.Context, tableArn string, initialDelay time.Duration, maxWorkers int64) error {
-	poller, err := ddbexportpoller.NewPoller(tableArn, initialDelay, maxWorkers)
-	if err != nil {
-		return err
-	}
-	return poller.PollExports(ctx)
 }
