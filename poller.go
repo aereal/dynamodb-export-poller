@@ -22,7 +22,7 @@ var (
 	errExportNotFinite = errors.New("export is not finite")
 )
 
-func NewPoller(tableArn string, initialDelay, maxDelay time.Duration, concurrency int64, maxAttempts int) (*Poller, error) {
+func NewPoller(tableArn string, initialDelay, maxDelay time.Duration, concurrency int64, maxAttempts int, globalTimeout time.Duration) (*Poller, error) {
 	if tableArn == "" {
 		return nil, ErrTableArnRequired
 	}
@@ -34,22 +34,24 @@ func NewPoller(tableArn string, initialDelay, maxDelay time.Duration, concurrenc
 	}
 
 	poller := &Poller{
-		tableArn:     tableArn,
-		initialDelay: initialDelay,
-		maxDelay:     maxDelay,
-		concurrency:  concurrency,
-		maxAttempts:  maxAttempts,
+		tableArn:      tableArn,
+		initialDelay:  initialDelay,
+		maxDelay:      maxDelay,
+		concurrency:   concurrency,
+		maxAttempts:   maxAttempts,
+		globalTimeout: globalTimeout,
 	}
 	poller.client = dynamodb.NewFromConfig(cfg)
 	return poller, nil
 }
 
 type Poller struct {
-	tableArn     string
-	initialDelay time.Duration
-	maxDelay     time.Duration
-	maxAttempts  int
-	concurrency  int64
+	tableArn      string
+	initialDelay  time.Duration
+	maxDelay      time.Duration
+	maxAttempts   int
+	concurrency   int64
+	globalTimeout time.Duration
 
 	client *dynamodb.Client
 }
@@ -61,6 +63,11 @@ func (p *Poller) PollExports(ctx context.Context) error {
 	}
 
 	sem := semaphore.NewWeighted(p.concurrency)
+	cancel := func() {}
+	if p.globalTimeout != 0 {
+		ctx, cancel = context.WithTimeout(ctx, p.globalTimeout)
+	}
+	defer cancel()
 	eg, ctx := errgroup.WithContext(ctx)
 	for _, summary := range out.ExportSummaries {
 		if summary.ExportStatus != types.ExportStatusInProgress {

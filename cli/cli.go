@@ -27,13 +27,15 @@ func (c *App) Run(argv []string) int {
 		maxDelay     time.Duration
 		concurrency  int64
 		maxAttempts  int
+		timeout      time.Duration
 	)
 	fls.StringVar(&tableArn, "table-arn", "", "table ARN to watch exports")
 	fls.BoolVar(&debug, "debug", false, "debug mode")
 	fls.DurationVar(&initialDelay, "initial-delay", time.Second, "initial wait time")
-	fls.DurationVar(&maxDelay, "max-delay", time.Second, "max wait time")
+	fls.DurationVar(&maxDelay, "max-delay", time.Second*10, "max wait time")
 	fls.Int64Var(&concurrency, "concurrency", int64(runtime.NumCPU()), "concurrency to run requests")
 	fls.IntVar(&maxAttempts, "max-attempts", 0, "max attempts (zero means forever)")
+	fls.DurationVar(&timeout, "timeout", 0, "global timeout (zero means waits forever)")
 	switch err := fls.Parse(argv[1:]); err {
 	case nil: // continue
 	case flag.ErrHelp:
@@ -46,7 +48,7 @@ func (c *App) Run(argv []string) int {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 	ctx := context.Background()
-	poller, err := ddbexportpoller.NewPoller(tableArn, initialDelay, maxDelay, concurrency, maxAttempts)
+	poller, err := ddbexportpoller.NewPoller(tableArn, initialDelay, maxDelay, concurrency, maxAttempts, timeout)
 	if err != nil {
 		log.Error().Err(err).Send()
 		return statusNG
