@@ -20,22 +20,17 @@ type App struct{}
 
 func (c *App) Run(argv []string) int {
 	fls := flag.NewFlagSet(argv[0], flag.ContinueOnError)
+	opts := ddbexportpoller.PollerOptions{}
 	var (
-		tableArn     string
-		debug        bool
-		initialDelay time.Duration
-		maxDelay     time.Duration
-		concurrency  int64
-		maxAttempts  int
-		timeout      time.Duration
+		debug bool
 	)
-	fls.StringVar(&tableArn, "table-arn", "", "table ARN to watch exports")
+	fls.StringVar(&opts.TableArn, "table-arn", "", "table ARN to watch exports")
 	fls.BoolVar(&debug, "debug", false, "debug mode")
-	fls.DurationVar(&initialDelay, "initial-delay", time.Second, "initial wait time")
-	fls.DurationVar(&maxDelay, "max-delay", time.Second*10, "max wait time")
-	fls.Int64Var(&concurrency, "concurrency", int64(runtime.NumCPU()), "concurrency to run requests")
-	fls.IntVar(&maxAttempts, "max-attempts", 0, "max attempts (zero means forever)")
-	fls.DurationVar(&timeout, "timeout", 0, "global timeout (zero means waits forever)")
+	fls.DurationVar(&opts.InitialDelay, "initial-delay", time.Second, "initial wait time")
+	fls.DurationVar(&opts.MaxDelay, "max-delay", time.Second*10, "max wait time")
+	fls.Int64Var(&opts.Concurrency, "concurrency", int64(runtime.NumCPU()), "concurrency to run requests")
+	fls.IntVar(&opts.MaxAttempts, "max-attempts", 0, "max attempts (zero means forever)")
+	fls.DurationVar(&opts.GlobalTimeout, "timeout", 0, "global timeout (zero means waits forever)")
 	switch err := fls.Parse(argv[1:]); err {
 	case nil: // continue
 	case flag.ErrHelp:
@@ -48,7 +43,7 @@ func (c *App) Run(argv []string) int {
 		zerolog.SetGlobalLevel(zerolog.DebugLevel)
 	}
 	ctx := context.Background()
-	poller, err := ddbexportpoller.NewPoller(tableArn, initialDelay, maxDelay, concurrency, maxAttempts, timeout)
+	poller, err := ddbexportpoller.NewPoller(opts)
 	if err != nil {
 		log.Error().Err(err).Send()
 		return statusNG

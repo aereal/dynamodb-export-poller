@@ -22,9 +22,34 @@ var (
 	errExportNotFinite = errors.New("export is not finite")
 )
 
-func NewPoller(tableArn string, initialDelay, maxDelay time.Duration, concurrency int64, maxAttempts int, globalTimeout time.Duration) (*Poller, error) {
-	if tableArn == "" {
-		return nil, ErrTableArnRequired
+type PollerOptions struct {
+	TableArn      string
+	InitialDelay  time.Duration
+	MaxDelay      time.Duration
+	MaxAttempts   int
+	Concurrency   int64
+	GlobalTimeout time.Duration
+}
+
+func (o PollerOptions) validate() error {
+	if o.TableArn == "" {
+		return ErrTableArnRequired
+	}
+	return nil
+}
+
+var noop = func() {}
+
+func (o PollerOptions) withTimeout(parent context.Context) (context.Context, func()) {
+	if o.GlobalTimeout == 0 {
+		return parent, noop
+	}
+	return context.WithTimeout(parent, o.GlobalTimeout)
+}
+
+func NewPoller(options PollerOptions) (*Poller, error) {
+	if err := options.validate(); err != nil {
+		return nil, err
 	}
 
 	ctx := context.Background()
@@ -32,41 +57,24 @@ func NewPoller(tableArn string, initialDelay, maxDelay time.Duration, concurrenc
 	if err != nil {
 		return nil, fmt.Errorf("LoadDefaultConfig(): %w", err)
 	}
-
-	poller := &Poller{
-		tableArn:      tableArn,
-		initialDelay:  initialDelay,
-		maxDelay:      maxDelay,
-		concurrency:   concurrency,
-		maxAttempts:   maxAttempts,
-		globalTimeout: globalTimeout,
-	}
+	poller := &Poller{options: options}
 	poller.client = dynamodb.NewFromConfig(cfg)
 	return poller, nil
 }
 
 type Poller struct {
-	tableArn      string
-	initialDelay  time.Duration
-	maxDelay      time.Duration
-	maxAttempts   int
-	concurrency   int64
-	globalTimeout time.Duration
-
-	client *dynamodb.Client
+	options PollerOptions
+	client  *dynamodb.Client
 }
 
 func (p *Poller) PollExports(ctx context.Context) error {
-	out, err := p.client.ListExports(ctx, &dynamodb.ListExportsInput{TableArn: &p.tableArn})
+	out, err := p.client.ListExports(ctx, &dynamodb.ListExportsInput{TableArn: &p.options.TableArn})
 	if err != nil {
 		return fmt.Errorf("ListExports(): %w", err)
 	}
 
-	sem := semaphore.NewWeighted(p.concurrency)
-	cancel := func() {}
-	if p.globalTimeout != 0 {
-		ctx, cancel = context.WithTimeout(ctx, p.globalTimeout)
-	}
+	sem := semaphore.NewWeighted(p.options.Concurrency)
+	ctx, cancel := p.options.withTimeout(ctx)
 	defer cancel()
 	eg, ctx := errgroup.WithContext(ctx)
 	for _, summary := range out.ExportSummaries {
@@ -76,9 +84,9 @@ func (p *Poller) PollExports(ctx context.Context) error {
 		exportArn := summary.ExportArn
 		var amount int64 = 1
 		policy := &retry.Policy{
-			MinDelay: p.initialDelay,
-			MaxDelay: p.maxDelay,
-			MaxCount: p.maxAttempts,
+			MinDelay: p.options.InitialDelay,
+			MaxDelay: p.options.MaxDelay,
+			MaxCount: p.options.MaxAttempts,
 		}
 		if err := sem.Acquire(ctx, amount); err != nil {
 			log.Error().Err(err).Str("exportArn", *exportArn).Msg("failed to acquire semaphore")
