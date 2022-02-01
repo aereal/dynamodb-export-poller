@@ -30,7 +30,7 @@ func (c *App) Run(argv []string) int {
 	fls.DurationVar(&opts.MaxDelay, "max-delay", time.Second*10, "max wait time")
 	fls.Int64Var(&opts.Concurrency, "concurrency", int64(runtime.NumCPU()), "concurrency to run requests")
 	fls.IntVar(&opts.MaxAttempts, "max-attempts", 0, "max attempts (zero means forever)")
-	fls.DurationVar(&opts.GlobalTimeout, "timeout", 0, "global timeout (zero means waits forever)")
+	fls.DurationVar(&opts.Timeout, "timeout", 0, "global timeout (zero means waits forever)")
 	switch err := fls.Parse(argv[1:]); err {
 	case nil: // continue
 	case flag.ErrHelp:
