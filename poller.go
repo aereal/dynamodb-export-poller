@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
@@ -44,7 +45,7 @@ type PollerOptions struct {
 }
 
 func (o PollerOptions) validate() error {
-	if o.TableArn == "" {
+	if !arn.IsARN(o.TableArn) {
 		return ErrTableArnRequired
 	}
 	return nil
