@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aereal/dynamodb-export-poller/internal/ddb"
 	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
@@ -80,7 +81,7 @@ func NewPoller(options PollerOptions) (*Poller, error) {
 
 type Poller struct {
 	options PollerOptions
-	client  *dynamodb.Client
+	client  ddb.Client
 }
 
 // PollExports polls ongoing export job status changes.
