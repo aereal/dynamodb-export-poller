@@ -22,6 +22,9 @@ var (
 	// ErrTableArnRequired is an error that means mandatory table ARN is not passed
 	ErrTableArnRequired = errors.New("table ARN required")
 
+	// ErrExportArnRequired is an error that means valid export ARN is not passed
+	ErrExportArnRequired = errors.New("export ARN required")
+
 	// ErrConcurrencyMustBePositive is an error that means given concurrency is too small
 	ErrConcurrencyMustBePositive = errors.New("concurrency must greater than 0")
 
@@ -90,6 +93,16 @@ type Poller struct {
 }
 
 const semaphoreWorkerAmount int64 = 1
+
+// PollExport polls ongoing export job status changes.
+//
+// You can configure polling behaviors through PollerOptions.
+func (p *Poller) PollExport(ctx context.Context, exportArn string) error {
+	if !arn.IsARN(exportArn) {
+		return ErrExportArnRequired
+	}
+	return p.pollExportWithRetries(ctx, exportArn)
+}
 
 // PollExportsOnTable polls ongoing export job status changes.
 //

@@ -17,6 +17,87 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+func TestPoller_PollExport(t *testing.T) {
+	clear := setLoggerOutput(t)
+	defer clear()
+
+	type args struct {
+		exportArn string
+	}
+	testCases := []struct {
+		name    string
+		options PollerOptions
+		args    args
+		onMock  func(mockClient *ddb.MockClient)
+		want    error
+	}{
+		{
+			"empty exportArn",
+			PollerOptions{
+				Concurrency: 2,
+				MaxAttempts: 1,
+			},
+			args{exportArn: ""},
+			func(mockClient *ddb.MockClient) {},
+			ErrExportArnRequired,
+		},
+		{
+			"some in-progress exports found and it finishes until reached to retry limit",
+			PollerOptions{
+				Concurrency: 2,
+				MaxAttempts: 2,
+			},
+			args{exportArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/1234-5678"},
+			func(mockClient *ddb.MockClient) {
+				seq(
+					describeExport(
+						mockClient,
+						&types.ExportDescription{ExportStatus: types.ExportStatusInProgress}).
+						Times(1),
+					describeExport(
+						mockClient,
+						&types.ExportDescription{ExportStatus: types.ExportStatusCompleted}).
+						Times(1),
+				)
+			},
+			nil,
+		},
+		{
+			"export jobs not finished in retry",
+			PollerOptions{
+				Concurrency: 2,
+				MaxAttempts: 2,
+			},
+			args{exportArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/1234-5678"},
+			func(mockClient *ddb.MockClient) {
+				describeExport(
+					mockClient,
+					&types.ExportDescription{ExportStatus: types.ExportStatusInProgress}).
+					Times(2)
+			},
+			ErrExportHasNotBeenFinished,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			poller, err := NewPoller(tc.options)
+			if err != nil {
+				t.Fatalf("NewPoller(): %s", err)
+			}
+			mockClient := ddb.NewMockClient(ctrl)
+			tc.onMock(mockClient)
+			poller.client = mockClient
+
+			ctx := context.Background()
+			err = poller.PollExport(ctx, tc.args.exportArn)
+			assertErr(t, err, tc.want)
+		})
+	}
+}
+
 func TestPoller_PollExportOnTable(t *testing.T) {
 	clear := setLoggerOutput(t)
 	defer clear()
