@@ -12,6 +12,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/smithy-go"
+	"github.com/hashicorp/go-multierror"
 	"github.com/rs/zerolog/log"
 	"github.com/shogo82148/go-retry"
 	"golang.org/x/sync/errgroup"
@@ -21,6 +22,10 @@ import (
 var (
 	// ErrTableArnRequired is an error that means mandatory table ARN is not passed
 	ErrTableArnRequired = errors.New("table ARN required")
+
+	ErrConcurrencyMustBePositive = errors.New("concurrency must greater than 0")
+
+	ErrInfiniteRetries = errors.New("maxAttempts must be limited")
 
 	errExportNotFinite = errors.New("export is not finite")
 )
@@ -46,10 +51,17 @@ type PollerOptions struct {
 }
 
 func (o PollerOptions) validate() error {
+	var err error
 	if !arn.IsARN(o.TableArn) {
-		return ErrTableArnRequired
+		err = multierror.Append(err, ErrTableArnRequired)
 	}
-	return nil
+	if o.Concurrency <= 0 {
+		err = multierror.Append(err, ErrConcurrencyMustBePositive)
+	}
+	if o.MaxAttempts <= 0 {
+		err = multierror.Append(err, ErrInfiniteRetries)
+	}
+	return err
 }
 
 var noop = func() {}
