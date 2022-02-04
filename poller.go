@@ -6,19 +6,25 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/aereal/dynamodb-export-poller/internal/ddb"
+	"github.com/aws/aws-sdk-go-v2/aws/arn"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
 	"github.com/aws/smithy-go"
+	"github.com/hashicorp/go-multierror"
 	"github.com/rs/zerolog/log"
 	"github.com/shogo82148/go-retry"
-	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 )
 
 var (
 	// ErrTableArnRequired is an error that means mandatory table ARN is not passed
 	ErrTableArnRequired = errors.New("table ARN required")
+
+	ErrConcurrencyMustBePositive = errors.New("concurrency must greater than 0")
+
+	ErrInfiniteRetries = errors.New("maxAttempts must be limited")
 
 	errExportNotFinite = errors.New("export is not finite")
 )
@@ -44,10 +50,17 @@ type PollerOptions struct {
 }
 
 func (o PollerOptions) validate() error {
-	if o.TableArn == "" {
-		return ErrTableArnRequired
+	var err error
+	if !arn.IsARN(o.TableArn) {
+		err = multierror.Append(err, ErrTableArnRequired)
 	}
-	return nil
+	if o.Concurrency <= 0 {
+		err = multierror.Append(err, ErrConcurrencyMustBePositive)
+	}
+	if o.MaxAttempts <= 0 {
+		err = multierror.Append(err, ErrInfiniteRetries)
+	}
+	return err
 }
 
 var noop = func() {}
@@ -79,7 +92,7 @@ func NewPoller(options PollerOptions) (*Poller, error) {
 
 type Poller struct {
 	options PollerOptions
-	client  *dynamodb.Client
+	client  ddb.Client
 }
 
 // PollExports polls ongoing export job status changes.
@@ -94,7 +107,7 @@ func (p *Poller) PollExports(ctx context.Context) error {
 	sem := semaphore.NewWeighted(p.options.Concurrency)
 	ctx, cancel := p.options.withTimeout(ctx)
 	defer cancel()
-	eg, ctx := errgroup.WithContext(ctx)
+	meg := &multierror.Group{}
 	for _, summary := range out.ExportSummaries {
 		if summary.ExportStatus != types.ExportStatusInProgress {
 			continue
@@ -110,12 +123,12 @@ func (p *Poller) PollExports(ctx context.Context) error {
 			log.Error().Err(err).Str("exportArn", *exportArn).Msg("failed to acquire semaphore")
 			return nil
 		}
-		eg.Go(func() error {
+		meg.Go(func() error {
 			defer sem.Release(amount)
 			return policy.Do(ctx, func() error { return p.pollExport(ctx, *exportArn) })
 		})
 	}
-	if err := eg.Wait(); err != nil {
+	if err := meg.Wait().ErrorOrNil(); err != nil {
 		return err
 	}
 
