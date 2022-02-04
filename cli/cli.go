@@ -39,7 +39,7 @@ func (c *App) Run(argv []string) int {
 		debug bool
 	)
 	fls.StringVar(&opts.TableArn, "table-arn", "", "table ARN to watch exports")
-	fls.BoolVar(&debug, "debug", false, "debug mode")
+	fls.BoolVar(&debug, "debug", false, "enable debug logging")
 	fls.DurationVar(&opts.InitialDelay, "initial-delay", time.Second, "initial wait time")
 	fls.DurationVar(&opts.MaxDelay, "max-delay", time.Second*10, "max wait time")
 	fls.Int64Var(&opts.Concurrency, "concurrency", int64(runtime.NumCPU()), "concurrency to run requests")
