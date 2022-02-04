@@ -17,23 +17,37 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-func TestPoller_PollExports(t *testing.T) {
+func TestPoller_PollExportOnTable(t *testing.T) {
 	clear := setLoggerOutput(t)
 	defer clear()
 
+	type args struct {
+		tableArn string
+	}
 	testCases := []struct {
 		name    string
 		options PollerOptions
+		args    args
 		onMock  func(mockClient *ddb.MockClient)
 		want    error
 	}{
 		{
-			"no exports",
+			"empty tableArn",
 			PollerOptions{
-				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
 				Concurrency: 2,
 				MaxAttempts: 1,
 			},
+			args{tableArn: ""},
+			func(mockClient *ddb.MockClient) {},
+			ErrTableArnRequired,
+		},
+		{
+			"no exports",
+			PollerOptions{
+				Concurrency: 2,
+				MaxAttempts: 1,
+			},
+			args{tableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"},
 			func(mockClient *ddb.MockClient) {
 				listExports(mockClient, nil).Times(1)
 			},
@@ -42,10 +56,10 @@ func TestPoller_PollExports(t *testing.T) {
 		{
 			"no in-progress exports",
 			PollerOptions{
-				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
 				Concurrency: 2,
 				MaxAttempts: 1,
 			},
+			args{tableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"},
 			func(mockClient *ddb.MockClient) {
 				listExports(mockClient, []types.ExportSummary{
 					{ExportArn: aws.String("arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/1234-5678"), ExportStatus: types.ExportStatusCompleted},
@@ -57,10 +71,10 @@ func TestPoller_PollExports(t *testing.T) {
 		{
 			"some in-progress exports found and it finishes until reached to retry limit",
 			PollerOptions{
-				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
 				Concurrency: 2,
 				MaxAttempts: 2,
 			},
+			args{tableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"},
 			func(mockClient *ddb.MockClient) {
 				listExports(
 					mockClient,
@@ -84,10 +98,10 @@ func TestPoller_PollExports(t *testing.T) {
 		{
 			"export jobs not finished in retry",
 			PollerOptions{
-				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
 				Concurrency: 2,
 				MaxAttempts: 2,
 			},
+			args{tableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"},
 			func(mockClient *ddb.MockClient) {
 				listExports(
 					mockClient,
@@ -105,10 +119,10 @@ func TestPoller_PollExports(t *testing.T) {
 		{
 			"client error",
 			PollerOptions{
-				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
 				Concurrency: 2,
 				MaxAttempts: 2,
 			},
+			args{tableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"},
 			func(mockClient *ddb.MockClient) {
 				listExports(
 					mockClient,
@@ -126,10 +140,10 @@ func TestPoller_PollExports(t *testing.T) {
 		{
 			"server error",
 			PollerOptions{
-				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
 				Concurrency: 2,
 				MaxAttempts: 2,
 			},
+			args{tableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"},
 			func(mockClient *ddb.MockClient) {
 				listExports(
 					mockClient,
@@ -147,10 +161,10 @@ func TestPoller_PollExports(t *testing.T) {
 		{
 			"other error",
 			PollerOptions{
-				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
 				Concurrency: 2,
 				MaxAttempts: 2,
 			},
+			args{tableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table"},
 			func(mockClient *ddb.MockClient) {
 				listExports(
 					mockClient,
@@ -180,7 +194,7 @@ func TestPoller_PollExports(t *testing.T) {
 			poller.client = mockClient
 
 			ctx := context.Background()
-			err = poller.PollExports(ctx)
+			err = poller.PollExportsOnTable(ctx, tc.args.tableArn)
 			assertErr(t, err, tc.want)
 		})
 	}
@@ -192,11 +206,9 @@ func TestPollerOptions_validate(t *testing.T) {
 		options PollerOptions
 		want    error
 	}{
-		{"ok", PollerOptions{TableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table", Concurrency: 1, MaxAttempts: 1}, nil},
-		{"TableArn is empty", PollerOptions{Concurrency: 1, MaxAttempts: 1}, ErrTableArnRequired},
-		{"malformed TableArn", PollerOptions{TableArn: "arn:aws:dynamodb:...", Concurrency: 1, MaxAttempts: 1}, ErrTableArnRequired},
-		{"invalid concurrency", PollerOptions{TableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table", Concurrency: 0, MaxAttempts: 1}, ErrConcurrencyMustBePositive},
-		{"zero maxAttmpts", PollerOptions{TableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table", Concurrency: 1, MaxAttempts: 0}, nil},
+		{"ok", PollerOptions{Concurrency: 1, MaxAttempts: 1}, nil},
+		{"invalid concurrency", PollerOptions{Concurrency: 0, MaxAttempts: 1}, ErrConcurrencyMustBePositive},
+		{"zero maxAttmpts", PollerOptions{Concurrency: 1, MaxAttempts: 0}, nil},
 	}
 	for _, tc := range testCase {
 		t.Run(tc.name, func(t *testing.T) {

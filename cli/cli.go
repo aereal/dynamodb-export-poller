@@ -36,9 +36,10 @@ func (c *App) Run(argv []string) int {
 	log.Logger = log.Logger.Output(c.out)
 	opts := ddbexportpoller.PollerOptions{}
 	var (
-		debug bool
+		debug    bool
+		tableArn string
 	)
-	fls.StringVar(&opts.TableArn, "table-arn", "", "table ARN to watch exports")
+	fls.StringVar(&tableArn, "table-arn", "", "table ARN to watch exports")
 	fls.BoolVar(&debug, "debug", false, "enable debug logging")
 	fls.DurationVar(&opts.InitialDelay, "initial-delay", time.Second, "initial wait time")
 	fls.DurationVar(&opts.MaxDelay, "max-delay", time.Second*10, "max wait time")
@@ -62,7 +63,7 @@ func (c *App) Run(argv []string) int {
 		log.Error().Err(err).Send()
 		return statusNG
 	}
-	if err := poller.PollExports(ctx); err != nil {
+	if err := poller.PollExportsOnTable(ctx, tableArn); err != nil {
 		log.Error().Err(err).Send()
 		return statusNG
 	}

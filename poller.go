@@ -33,9 +33,6 @@ var (
 
 // PollerOptions is a set of Poller's options
 type PollerOptions struct {
-	// TableArn is an ARN of the table that the poller waits for export jobs
-	TableArn string
-
 	// InitialDelay is used for first interval
 	InitialDelay time.Duration
 
@@ -54,9 +51,6 @@ type PollerOptions struct {
 
 func (o PollerOptions) validate() error {
 	var err error
-	if !arn.IsARN(o.TableArn) {
-		err = multierror.Append(err, ErrTableArnRequired)
-	}
 	if o.Concurrency <= 0 {
 		err = multierror.Append(err, ErrConcurrencyMustBePositive)
 	}
@@ -97,11 +91,15 @@ type Poller struct {
 
 const semaphoreWorkerAmount int64 = 1
 
-// PollExports polls ongoing export job status changes.
+// PollExportsOnTable polls ongoing export job status changes.
 //
 // You can configure polling behaviors through PollerOptions.
-func (p *Poller) PollExports(ctx context.Context) error {
-	out, err := p.client.ListExports(ctx, &dynamodb.ListExportsInput{TableArn: &p.options.TableArn})
+func (p *Poller) PollExportsOnTable(ctx context.Context, tableArn string) error {
+	if !arn.IsARN(tableArn) {
+		return ErrTableArnRequired
+	}
+
+	out, err := p.client.ListExports(ctx, &dynamodb.ListExportsInput{TableArn: &tableArn})
 	if err != nil {
 		return fmt.Errorf("ListExports(): %w", err)
 	}
