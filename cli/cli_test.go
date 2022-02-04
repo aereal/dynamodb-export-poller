@@ -11,7 +11,8 @@ func TestCLI(t *testing.T) {
 		argv       []string
 		wantStatus int
 	}{
-		{"no table ARN", []string{"me"}, statusNG},
+		{"neither tableArn or exportArn specified", []string{"me"}, statusNG},
+		{"both tableArn and exportArn specified", []string{"me", "-table-arn", "arn:aws:dynamodb:us-east-1:123456789012:table/my-table", "-export-arn", "arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/9012-3456"}, statusNG},
 	}
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
