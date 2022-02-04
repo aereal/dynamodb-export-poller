@@ -17,9 +17,11 @@ const (
 	statusNG
 )
 
+var defaultWriter io.Writer
+
 func NewApp(out io.Writer) *App {
 	if out == nil {
-		out = io.Discard
+		out = defaultWriter
 	}
 	return &App{out: out}
 }
