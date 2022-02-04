@@ -25,7 +25,10 @@ var (
 	// ErrConcurrencyMustBePositive is an error that means given concurrency is too small
 	ErrConcurrencyMustBePositive = errors.New("concurrency must greater than 0")
 
-	errExportNotFinite = errors.New("export is not finite")
+	// ErrExportHasNotBeenFinished is an error that ongoing export jobs have not been finished until the deadline.
+	//
+	// The error is not returned if MaxAttempts and Timeout are zero.
+	ErrExportHasNotBeenFinished = errors.New("export has not been finished")
 )
 
 // PollerOptions is a set of Poller's options
@@ -148,7 +151,7 @@ func (p *Poller) pollExport(ctx context.Context, exportArn string) error {
 	}
 	if out.ExportDescription.ExportStatus == types.ExportStatusInProgress {
 		l.Debug().Msg("export is still in progress")
-		return errExportNotFinite
+		return ErrExportHasNotBeenFinished
 	}
 	l.Debug().Msg("export finishes")
 	return nil
