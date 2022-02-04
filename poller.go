@@ -90,6 +90,8 @@ type Poller struct {
 	client  ddb.Client
 }
 
+const semaphoreWorkerAmount int64 = 1
+
 // PollExports polls ongoing export job status changes.
 //
 // You can configure polling behaviors through PollerOptions.
@@ -108,18 +110,17 @@ func (p *Poller) PollExports(ctx context.Context) error {
 			continue
 		}
 		exportArn := summary.ExportArn
-		var amount int64 = 1
 		policy := &retry.Policy{
 			MinDelay: p.options.InitialDelay,
 			MaxDelay: p.options.MaxDelay,
 			MaxCount: p.options.MaxAttempts,
 		}
-		if err := sem.Acquire(ctx, amount); err != nil {
+		if err := sem.Acquire(ctx, semaphoreWorkerAmount); err != nil {
 			log.Error().Err(err).Str("exportArn", *exportArn).Msg("failed to acquire semaphore")
 			return nil
 		}
 		meg.Go(func() error {
-			defer sem.Release(amount)
+			defer sem.Release(semaphoreWorkerAmount)
 			return policy.Do(ctx, func() error { return p.pollExport(ctx, *exportArn) })
 		})
 	}
