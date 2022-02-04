@@ -100,7 +100,7 @@ func TestPoller_PollExports(t *testing.T) {
 					&types.ExportDescription{ExportStatus: types.ExportStatusInProgress}).
 					Times(2)
 			},
-			errExportNotFinite,
+			ErrExportHasNotBeenFinished,
 		},
 		{
 			"client error",

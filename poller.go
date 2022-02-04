@@ -22,9 +22,13 @@ var (
 	// ErrTableArnRequired is an error that means mandatory table ARN is not passed
 	ErrTableArnRequired = errors.New("table ARN required")
 
+	// ErrConcurrencyMustBePositive is an error that means given concurrency is too small
 	ErrConcurrencyMustBePositive = errors.New("concurrency must greater than 0")
 
-	errExportNotFinite = errors.New("export is not finite")
+	// ErrExportHasNotBeenFinished is an error that ongoing export jobs have not been finished until the deadline.
+	//
+	// The error is not returned if MaxAttempts and Timeout are zero.
+	ErrExportHasNotBeenFinished = errors.New("export has not been finished")
 )
 
 // PollerOptions is a set of Poller's options
@@ -41,6 +45,7 @@ type PollerOptions struct {
 	// MaxAttempts is a number to send export job status check requests
 	MaxAttempts int
 
+	// Concurrency means max number of requests at the same time
 	Concurrency int64
 
 	// Timeout is used for all export job status check requests. No requests are sent over this timeout.
@@ -90,6 +95,8 @@ type Poller struct {
 	client  ddb.Client
 }
 
+const semaphoreWorkerAmount int64 = 1
+
 // PollExports polls ongoing export job status changes.
 //
 // You can configure polling behaviors through PollerOptions.
@@ -108,18 +115,17 @@ func (p *Poller) PollExports(ctx context.Context) error {
 			continue
 		}
 		exportArn := summary.ExportArn
-		var amount int64 = 1
 		policy := &retry.Policy{
 			MinDelay: p.options.InitialDelay,
 			MaxDelay: p.options.MaxDelay,
 			MaxCount: p.options.MaxAttempts,
 		}
-		if err := sem.Acquire(ctx, amount); err != nil {
+		if err := sem.Acquire(ctx, semaphoreWorkerAmount); err != nil {
 			log.Error().Err(err).Str("exportArn", *exportArn).Msg("failed to acquire semaphore")
 			return nil
 		}
 		meg.Go(func() error {
-			defer sem.Release(amount)
+			defer sem.Release(semaphoreWorkerAmount)
 			return policy.Do(ctx, func() error { return p.pollExport(ctx, *exportArn) })
 		})
 	}
@@ -145,7 +151,7 @@ func (p *Poller) pollExport(ctx context.Context, exportArn string) error {
 	}
 	if out.ExportDescription.ExportStatus == types.ExportStatusInProgress {
 		l.Debug().Msg("export is still in progress")
-		return errExportNotFinite
+		return ErrExportHasNotBeenFinished
 	}
 	l.Debug().Msg("export finishes")
 	return nil
