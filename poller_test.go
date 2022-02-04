@@ -18,16 +18,21 @@ func TestPollerOptions_validate(t *testing.T) {
 	for _, tc := range testCase {
 		t.Run(tc.name, func(t *testing.T) {
 			got := tc.options.validate()
-			if wantErr(tc.want) != wantErr(got) {
-				t.Errorf("error existence:\n\twant=%v\n\tgot=%v", wantErr(tc.want), wantErr(got))
-			}
-			if !errors.Is(got, tc.want) {
-				t.Errorf("error type mismatch:\n\twant=%T\n\tgot=%T", tc.want, got)
-			}
-			if errMsg(got) != errMsg(tc.want) {
-				t.Errorf("error message mismatch:\n\twant=%s\n\tgot=%s", errMsg(tc.want), errMsg(got))
-			}
+			assertErr(t, got, tc.want)
 		})
+	}
+}
+
+func assertErr(t *testing.T, got, want error) {
+	t.Helper()
+	if wantErr(got) != wantErr(want) {
+		t.Errorf("error existence:\n\twant=%v\n\tgot=%v", wantErr(want), wantErr(got))
+	}
+	if !errors.Is(got, want) {
+		t.Errorf("error type mismatch:\n\twant=%T\n\tgot=%T", want, got)
+	}
+	if errMsg(got) != errMsg(want) {
+		t.Errorf("error message mismatch:\n\twant=%s\n\tgot=%s", errMsg(want), errMsg(got))
 	}
 }
 
