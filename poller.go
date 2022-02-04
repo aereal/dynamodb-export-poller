@@ -22,6 +22,9 @@ var (
 	// ErrTableArnRequired is an error that means mandatory table ARN is not passed
 	ErrTableArnRequired = errors.New("table ARN required")
 
+	// ErrExportArnRequired is an error that means valid export ARN is not passed
+	ErrExportArnRequired = errors.New("export ARN required")
+
 	// ErrConcurrencyMustBePositive is an error that means given concurrency is too small
 	ErrConcurrencyMustBePositive = errors.New("concurrency must greater than 0")
 
@@ -33,9 +36,6 @@ var (
 
 // PollerOptions is a set of Poller's options
 type PollerOptions struct {
-	// TableArn is an ARN of the table that the poller waits for export jobs
-	TableArn string
-
 	// InitialDelay is used for first interval
 	InitialDelay time.Duration
 
@@ -54,9 +54,6 @@ type PollerOptions struct {
 
 func (o PollerOptions) validate() error {
 	var err error
-	if !arn.IsARN(o.TableArn) {
-		err = multierror.Append(err, ErrTableArnRequired)
-	}
 	if o.Concurrency <= 0 {
 		err = multierror.Append(err, ErrConcurrencyMustBePositive)
 	}
@@ -97,11 +94,25 @@ type Poller struct {
 
 const semaphoreWorkerAmount int64 = 1
 
-// PollExports polls ongoing export job status changes.
+// PollExport polls ongoing export job status changes.
 //
 // You can configure polling behaviors through PollerOptions.
-func (p *Poller) PollExports(ctx context.Context) error {
-	out, err := p.client.ListExports(ctx, &dynamodb.ListExportsInput{TableArn: &p.options.TableArn})
+func (p *Poller) PollExport(ctx context.Context, exportArn string) error {
+	if !arn.IsARN(exportArn) {
+		return ErrExportArnRequired
+	}
+	return p.pollExportWithRetries(ctx, exportArn)
+}
+
+// PollExportsOnTable polls ongoing export job status changes.
+//
+// You can configure polling behaviors through PollerOptions.
+func (p *Poller) PollExportsOnTable(ctx context.Context, tableArn string) error {
+	if !arn.IsARN(tableArn) {
+		return ErrTableArnRequired
+	}
+
+	out, err := p.client.ListExports(ctx, &dynamodb.ListExportsInput{TableArn: &tableArn})
 	if err != nil {
 		return fmt.Errorf("ListExports(): %w", err)
 	}
@@ -115,18 +126,13 @@ func (p *Poller) PollExports(ctx context.Context) error {
 			continue
 		}
 		exportArn := summary.ExportArn
-		policy := &retry.Policy{
-			MinDelay: p.options.InitialDelay,
-			MaxDelay: p.options.MaxDelay,
-			MaxCount: p.options.MaxAttempts,
-		}
 		if err := sem.Acquire(ctx, semaphoreWorkerAmount); err != nil {
 			log.Error().Err(err).Str("exportArn", *exportArn).Msg("failed to acquire semaphore")
 			return nil
 		}
 		meg.Go(func() error {
 			defer sem.Release(semaphoreWorkerAmount)
-			return policy.Do(ctx, func() error { return p.pollExport(ctx, *exportArn) })
+			return p.pollExportWithRetries(ctx, *exportArn)
 		})
 	}
 	if err := meg.Wait().ErrorOrNil(); err != nil {
@@ -134,6 +140,15 @@ func (p *Poller) PollExports(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (p *Poller) pollExportWithRetries(ctx context.Context, exportArn string) error {
+	policy := &retry.Policy{
+		MinDelay: p.options.InitialDelay,
+		MaxDelay: p.options.MaxDelay,
+		MaxCount: p.options.MaxAttempts,
+	}
+	return policy.Do(ctx, func() error { return p.pollExport(ctx, exportArn) })
 }
 
 func (p *Poller) pollExport(ctx context.Context, exportArn string) error {
