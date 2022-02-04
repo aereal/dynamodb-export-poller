@@ -10,6 +10,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
 	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/aws/smithy-go"
 	"github.com/golang/mock/gomock"
 	"github.com/hashicorp/go-multierror"
 	"github.com/rs/zerolog"
@@ -100,6 +101,69 @@ func TestPoller_PollExports(t *testing.T) {
 					Times(2)
 			},
 			errExportNotFinite,
+		},
+		{
+			"client error",
+			PollerOptions{
+				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
+				Concurrency: 2,
+				MaxAttempts: 2,
+			},
+			func(mockClient *ddb.MockClient) {
+				listExports(
+					mockClient,
+					[]types.ExportSummary{{
+						ExportArn:    aws.String("arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/9012-3456"),
+						ExportStatus: types.ExportStatusInProgress}}).
+					Times(1)
+				mockClient.EXPECT().
+					DescribeExport(gomock.Any(), gomock.Any()).
+					Return(nil, &smithy.GenericAPIError{Code: "oops", Message: "oops", Fault: smithy.FaultClient}).
+					Times(1)
+			},
+			&smithy.GenericAPIError{Code: "oops", Message: "oops", Fault: smithy.FaultClient},
+		},
+		{
+			"server error",
+			PollerOptions{
+				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
+				Concurrency: 2,
+				MaxAttempts: 2,
+			},
+			func(mockClient *ddb.MockClient) {
+				listExports(
+					mockClient,
+					[]types.ExportSummary{{
+						ExportArn:    aws.String("arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/9012-3456"),
+						ExportStatus: types.ExportStatusInProgress}}).
+					Times(1)
+				mockClient.EXPECT().
+					DescribeExport(gomock.Any(), gomock.Any()).
+					Return(nil, &smithy.GenericAPIError{Code: "oops", Message: "oops", Fault: smithy.FaultServer}).
+					Times(2)
+			},
+			&smithy.GenericAPIError{Code: "oops", Message: "oops", Fault: smithy.FaultServer},
+		},
+		{
+			"other error",
+			PollerOptions{
+				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
+				Concurrency: 2,
+				MaxAttempts: 2,
+			},
+			func(mockClient *ddb.MockClient) {
+				listExports(
+					mockClient,
+					[]types.ExportSummary{{
+						ExportArn:    aws.String("arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/9012-3456"),
+						ExportStatus: types.ExportStatusInProgress}}).
+					Times(1)
+				mockClient.EXPECT().
+					DescribeExport(gomock.Any(), gomock.Any()).
+					Return(nil, errors.New("oops")).
+					Times(2)
+			},
+			errors.New("oops"),
 		},
 	}
 	for _, tc := range testCases {
