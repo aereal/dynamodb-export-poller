@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"flag"
+	"io"
 	"runtime"
 	"time"
 
@@ -16,10 +17,23 @@ const (
 	statusNG
 )
 
-type App struct{}
+var defaultWriter io.Writer
+
+func NewApp(out io.Writer) *App {
+	if out == nil {
+		out = defaultWriter
+	}
+	return &App{out: out}
+}
+
+type App struct {
+	out io.Writer
+}
 
 func (c *App) Run(argv []string) int {
 	fls := flag.NewFlagSet(argv[0], flag.ContinueOnError)
+	fls.SetOutput(c.out)
+	log.Logger = log.Logger.Output(c.out)
 	opts := ddbexportpoller.PollerOptions{}
 	var (
 		debug bool
