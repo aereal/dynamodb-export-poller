@@ -147,9 +147,6 @@ func assertErr(t *testing.T, got, want error) {
 	if wantErr(got) != wantErr(want) {
 		t.Errorf("error existence:\n\twant=%v\n\tgot=%v", wantErr(want), wantErr(got))
 	}
-	if !errors.Is(got, want) {
-		t.Errorf("error type mismatch:\n\twant=%T\n\tgot=%T", want, got)
-	}
 	if errMsg(got) != errMsg(want) {
 		t.Errorf("error message mismatch:\n\twant=%s\n\tgot=%s", errMsg(want), errMsg(got))
 	}
