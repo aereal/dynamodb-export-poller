@@ -24,8 +24,6 @@ var (
 
 	ErrConcurrencyMustBePositive = errors.New("concurrency must greater than 0")
 
-	ErrInfiniteRetries = errors.New("maxAttempts must be limited")
-
 	errExportNotFinite = errors.New("export is not finite")
 )
 
@@ -56,9 +54,6 @@ func (o PollerOptions) validate() error {
 	}
 	if o.Concurrency <= 0 {
 		err = multierror.Append(err, ErrConcurrencyMustBePositive)
-	}
-	if o.MaxAttempts <= 0 {
-		err = multierror.Append(err, ErrInfiniteRetries)
 	}
 	return err
 }

@@ -196,7 +196,7 @@ func TestPollerOptions_validate(t *testing.T) {
 		{"TableArn is empty", PollerOptions{Concurrency: 1, MaxAttempts: 1}, ErrTableArnRequired},
 		{"malformed TableArn", PollerOptions{TableArn: "arn:aws:dynamodb:...", Concurrency: 1, MaxAttempts: 1}, ErrTableArnRequired},
 		{"invalid concurrency", PollerOptions{TableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table", Concurrency: 0, MaxAttempts: 1}, ErrConcurrencyMustBePositive},
-		{"invalid maxAttmpts", PollerOptions{TableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table", Concurrency: 1, MaxAttempts: 0}, ErrInfiniteRetries},
+		{"zero maxAttmpts", PollerOptions{TableArn: "arn:aws:dynamodb:us-east-1:123456789012:table/my-table", Concurrency: 1, MaxAttempts: 0}, nil},
 	}
 	for _, tc := range testCase {
 		t.Run(tc.name, func(t *testing.T) {
