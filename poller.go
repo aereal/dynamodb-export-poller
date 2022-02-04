@@ -15,7 +15,6 @@ import (
 	"github.com/hashicorp/go-multierror"
 	"github.com/rs/zerolog/log"
 	"github.com/shogo82148/go-retry"
-	"golang.org/x/sync/errgroup"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -108,7 +107,7 @@ func (p *Poller) PollExports(ctx context.Context) error {
 	sem := semaphore.NewWeighted(p.options.Concurrency)
 	ctx, cancel := p.options.withTimeout(ctx)
 	defer cancel()
-	eg, ctx := errgroup.WithContext(ctx)
+	meg := &multierror.Group{}
 	for _, summary := range out.ExportSummaries {
 		if summary.ExportStatus != types.ExportStatusInProgress {
 			continue
@@ -124,12 +123,12 @@ func (p *Poller) PollExports(ctx context.Context) error {
 			log.Error().Err(err).Str("exportArn", *exportArn).Msg("failed to acquire semaphore")
 			return nil
 		}
-		eg.Go(func() error {
+		meg.Go(func() error {
 			defer sem.Release(amount)
 			return policy.Do(ctx, func() error { return p.pollExport(ctx, *exportArn) })
 		})
 	}
-	if err := eg.Wait(); err != nil {
+	if err := meg.Wait().ErrorOrNil(); err != nil {
 		return err
 	}
 
