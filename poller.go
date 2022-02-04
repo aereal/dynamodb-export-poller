@@ -113,18 +113,13 @@ func (p *Poller) PollExportsOnTable(ctx context.Context, tableArn string) error 
 			continue
 		}
 		exportArn := summary.ExportArn
-		policy := &retry.Policy{
-			MinDelay: p.options.InitialDelay,
-			MaxDelay: p.options.MaxDelay,
-			MaxCount: p.options.MaxAttempts,
-		}
 		if err := sem.Acquire(ctx, semaphoreWorkerAmount); err != nil {
 			log.Error().Err(err).Str("exportArn", *exportArn).Msg("failed to acquire semaphore")
 			return nil
 		}
 		meg.Go(func() error {
 			defer sem.Release(semaphoreWorkerAmount)
-			return policy.Do(ctx, func() error { return p.pollExport(ctx, *exportArn) })
+			return p.pollExportWithRetries(ctx, *exportArn)
 		})
 	}
 	if err := meg.Wait().ErrorOrNil(); err != nil {
@@ -132,6 +127,15 @@ func (p *Poller) PollExportsOnTable(ctx context.Context, tableArn string) error 
 	}
 
 	return nil
+}
+
+func (p *Poller) pollExportWithRetries(ctx context.Context, exportArn string) error {
+	policy := &retry.Policy{
+		MinDelay: p.options.InitialDelay,
+		MaxDelay: p.options.MaxDelay,
+		MaxCount: p.options.MaxAttempts,
+	}
+	return policy.Do(ctx, func() error { return p.pollExport(ctx, exportArn) })
 }
 
 func (p *Poller) pollExport(ctx context.Context, exportArn string) error {
