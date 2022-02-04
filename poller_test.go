@@ -1,12 +1,126 @@
 package ddbexportpoller
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
 
+	"github.com/aereal/dynamodb-export-poller/internal/ddb"
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb"
+	"github.com/aws/aws-sdk-go-v2/service/dynamodb/types"
+	"github.com/golang/mock/gomock"
 	"github.com/hashicorp/go-multierror"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
+
+func TestPoller_PollExports(t *testing.T) {
+	clear := setLoggerOutput(t)
+	defer clear()
+
+	testCases := []struct {
+		name    string
+		options PollerOptions
+		onMock  func(mockClient *ddb.MockClient)
+		want    error
+	}{
+		{
+			"no exports",
+			PollerOptions{
+				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
+				Concurrency: 2,
+				MaxAttempts: 1,
+			},
+			func(mockClient *ddb.MockClient) {
+				listExports(mockClient, nil).Times(1)
+			},
+			nil,
+		},
+		{
+			"no in-progress exports",
+			PollerOptions{
+				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
+				Concurrency: 2,
+				MaxAttempts: 1,
+			},
+			func(mockClient *ddb.MockClient) {
+				listExports(mockClient, []types.ExportSummary{
+					{ExportArn: aws.String("arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/1234-5678"), ExportStatus: types.ExportStatusCompleted},
+					{ExportArn: aws.String("arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/5678-1234"), ExportStatus: types.ExportStatusFailed},
+				}).Times(1)
+			},
+			nil,
+		},
+		{
+			"some in-progress exports found and it finishes until reached to retry limit",
+			PollerOptions{
+				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
+				Concurrency: 2,
+				MaxAttempts: 2,
+			},
+			func(mockClient *ddb.MockClient) {
+				listExports(
+					mockClient,
+					[]types.ExportSummary{{
+						ExportArn:    aws.String("arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/9012-3456"),
+						ExportStatus: types.ExportStatusInProgress}}).
+					Times(1)
+				seq(
+					describeExport(
+						mockClient,
+						&types.ExportDescription{ExportStatus: types.ExportStatusInProgress}).
+						Times(1),
+					describeExport(
+						mockClient,
+						&types.ExportDescription{ExportStatus: types.ExportStatusCompleted}).
+						Times(1),
+				)
+			},
+			nil,
+		},
+		{
+			"export jobs not finished in retry",
+			PollerOptions{
+				TableArn:    "arn:aws:dynamodb:us-east-1:123456789012:table/my-table",
+				Concurrency: 2,
+				MaxAttempts: 2,
+			},
+			func(mockClient *ddb.MockClient) {
+				listExports(
+					mockClient,
+					[]types.ExportSummary{{
+						ExportArn:    aws.String("arn:aws:dynamodb:us-east-1:123456789012:table/my-table/export/9012-3456"),
+						ExportStatus: types.ExportStatusInProgress}}).
+					Times(1)
+				describeExport(
+					mockClient,
+					&types.ExportDescription{ExportStatus: types.ExportStatusInProgress}).
+					Times(2)
+			},
+			errExportNotFinite,
+		},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			poller, err := NewPoller(tc.options)
+			if err != nil {
+				t.Fatalf("NewPoller(): %s", err)
+			}
+			mockClient := ddb.NewMockClient(ctrl)
+			tc.onMock(mockClient)
+			poller.client = mockClient
+
+			ctx := context.Background()
+			err = poller.PollExports(ctx)
+			assertErr(t, err, tc.want)
+		})
+	}
+}
 
 func TestPollerOptions_validate(t *testing.T) {
 	testCase := []struct {
@@ -61,4 +175,41 @@ func errMsg(err error) string {
 		return merr.Error()
 	}
 	return err.Error()
+}
+
+func setLoggerOutput(t *testing.T) func() {
+	t.Helper()
+	orig := log.Logger
+	log.Logger = log.Output(zerolog.NewTestWriter(t))
+	return func() {
+		log.Logger = orig
+	}
+}
+
+func listExports(mockClient *ddb.MockClient, summaries []types.ExportSummary) *gomock.Call {
+	return mockClient.EXPECT().
+		ListExports(gomock.Any(), gomock.Any()).
+		Return(&dynamodb.ListExportsOutput{ExportSummaries: summaries}, nil)
+}
+
+func describeExport(mockClient *ddb.MockClient, description *types.ExportDescription) *gomock.Call {
+	return mockClient.EXPECT().
+		DescribeExport(gomock.Any(), gomock.Any()).
+		Return(&dynamodb.DescribeExportOutput{ExportDescription: description}, nil)
+}
+
+func seq(calls ...*gomock.Call) *gomock.Call {
+	if len(calls) == 0 {
+		panic(errors.New("calls must be given"))
+	}
+	var curr *gomock.Call
+	for i := len(calls) - 1; i >= 0; i-- {
+		if curr == nil {
+			curr = calls[i]
+			continue
+		}
+		curr.After(calls[i])
+		curr = calls[i]
+	}
+	return curr
 }
