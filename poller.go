@@ -22,6 +22,7 @@ var (
 	// ErrTableArnRequired is an error that means mandatory table ARN is not passed
 	ErrTableArnRequired = errors.New("table ARN required")
 
+	// ErrConcurrencyMustBePositive is an error that means given concurrency is too small
 	ErrConcurrencyMustBePositive = errors.New("concurrency must greater than 0")
 
 	errExportNotFinite = errors.New("export is not finite")
@@ -41,6 +42,7 @@ type PollerOptions struct {
 	// MaxAttempts is a number to send export job status check requests
 	MaxAttempts int
 
+	// Concurrency means max number of requests at the same time
 	Concurrency int64
 
 	// Timeout is used for all export job status check requests. No requests are sent over this timeout.
