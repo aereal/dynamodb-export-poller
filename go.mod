@@ -5,7 +5,7 @@ go 1.17
 require (
 	github.com/aws/aws-sdk-go-v2 v1.16.5
 	github.com/aws/aws-sdk-go-v2/config v1.15.11
-	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.15.6
+	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.15.7
 	github.com/aws/smithy-go v1.11.3
 	github.com/golang/mock v1.6.0
 	github.com/hashicorp/go-multierror v1.1.1
