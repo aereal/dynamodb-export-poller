@@ -11,7 +11,7 @@ require (
 	github.com/hashicorp/go-multierror v1.1.1
 	github.com/rs/zerolog v1.26.1
 	github.com/shogo82148/go-retry v1.1.1
-	golang.org/x/sync v0.0.0-20220513210516-0976fa681c29
+	golang.org/x/sync v0.8.0
 )
 
 require (
