@@ -24,8 +24,9 @@ github.com/aws/aws-sdk-go-v2/service/sso v1.11.15 h1:HaIE5/TtKr66qZTJpvMifDxH4lR
 github.com/aws/aws-sdk-go-v2/service/sso v1.11.15/go.mod h1:dDVD4ElJRTQXx7dOQ59EkqGyNU9tnwy1RKln+oLIOTU=
 github.com/aws/aws-sdk-go-v2/service/sts v1.16.12 h1:YU9UHPukkCCnETHEExOptF/BxPvGJKXO/NBx+RMQ/2A=
 github.com/aws/aws-sdk-go-v2/service/sts v1.16.12/go.mod h1:b53qpmhHk7mTL2J/tfG6f38neZiyBQSiNXGCuNKq4+4=
-github.com/aws/smithy-go v1.12.1 h1:yQRC55aXN/y1W10HgwHle01DRuV9Dpf31iGkotjt3Ag=
 github.com/aws/smithy-go v1.12.1/go.mod h1:Tg+OJXh4MB2R/uN61Ko2f6hTZwB/ZYGOtib8J3gBHzA=
+github.com/aws/smithy-go v1.22.0 h1:uunKnWlcoL3zO7q+gG2Pk53joueEOsnNB28QdMsmiMM=
+github.com/aws/smithy-go v1.22.0/go.mod h1:irrKGvNn1InZwb2d7fkIRNucdfwR8R+Ts3wxYa/cJHg=
 github.com/coreos/go-systemd/v22 v22.3.2/go.mod h1:Y58oyj3AT4RCenI/lSvhwexgC+NSVTIJ3seZv2GcEnc=
 github.com/davecgh/go-spew v1.1.0 h1:ZDRjVQ15GmhC3fiQ8ni8+OwkZQO4DARzQgrnXU1Liz8=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
